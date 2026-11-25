@@ -21,12 +21,12 @@ const DIST_DIR = path.join(ROOT, 'dist');
 
 // ====== 站点信息：改这里即可 ======
 const SITE = {
-  title: '流云借风',
+  title: '流云',
   description: '记一些技术，一些想法。',
   author: '流云借风',
   // 站点绝对地址：现在用 workers.dev 域名，以后绑了自定义域名改这里（或构建时设 SITE_URL 环境变量）
   url: process.env.SITE_URL || 'https://liu-yun-s-blog.fzj121382.workers.dev',
-  footer: '流云借风 · 用 Markdown 写，用 Node 生成',
+  footer: '流云 · 用 Markdown 写，用 Node 生成',
 };
 
 // ====== 小工具 ======
