@@ -203,11 +203,14 @@ hr {
   color: var(--fg);
 }
 
-.post-list time {
-  display: block;
+.post-list .post-meta {
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 13px;
-  margin-top: 4px;
+}
+
+.post-list .post-meta time {
+  color: var(--muted);
 }
 
 .post-list .excerpt {
@@ -232,4 +235,72 @@ hr {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 13px;
+}
+
+.site-head-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-nav a {
+  margin-left: 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.site-nav a:hover {
+  color: var(--link);
+}
+
+.page-title {
+  font-size: 26px;
+  margin: 0 0 1.2em;
+}
+
+.tag-link {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0.2em;
+}
+
+.tag-link::before {
+  content: "#";
+  opacity: 0.6;
+}
+
+.tag-link:hover {
+  color: var(--link);
+}
+
+.post-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.post-nav a {
+  max-width: 48%;
+}
+
+.post-nav .next {
+  margin-left: auto;
+  text-align: right;
+}
+
+.notfound {
+  text-align: center;
+  padding: 60px 0;
+}
+
+.notfound h1 {
+  font-size: 64px;
+  margin: 0 0 0.2em;
+  color: var(--muted);
 }

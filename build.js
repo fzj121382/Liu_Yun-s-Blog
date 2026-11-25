@@ -6,8 +6,8 @@
  *
  *   node build.js
  *
- * 输入：posts/*.md + assets/*
- * 输出：dist/index.html + dist/posts/*.html + dist/assets/* + dist/style.css
+ * 输入：posts/*.md + pages/*.md + assets/*
+ * 输出：dist/ 下的首页、文章页、标签页、关于页、404、RSS、sitemap、robots
  */
 
 const fs = require('fs');
@@ -15,14 +15,18 @@ const path = require('path');
 
 const ROOT = __dirname;
 const POSTS_DIR = path.join(ROOT, 'posts');
+const PAGES_DIR = path.join(ROOT, 'pages');
 const ASSETS_DIR = path.join(ROOT, 'assets');
 const DIST_DIR = path.join(ROOT, 'dist');
 
 // ====== 站点信息：改这里即可 ======
 const SITE = {
-  title: '我的博客',
-  description: '用 Markdown 写，用 Node 生成，纯静态。',
-  footer: 'build.js · 无框架 · 无依赖',
+  title: '流云借风',
+  description: '记一些技术，一些想法。',
+  author: '流云借风',
+  // 站点绝对地址：现在用 workers.dev 域名，以后绑了自定义域名改这里（或构建时设 SITE_URL 环境变量）
+  url: process.env.SITE_URL || 'https://liu-yun-s-blog.fzj121382.workers.dev',
+  footer: '流云借风 · 用 Markdown 写，用 Node 生成',
 };
 
 // ====== 小工具 ======
@@ -32,6 +36,10 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function absUrl(p) {
+  return SITE.url.replace(/\/+$/, '') + '/' + String(p).replace(/^\/+/, '');
 }
 
 function writeFile(file, content) {
@@ -73,7 +81,7 @@ function parseFrontMatter(raw) {
   return { data, body: raw.slice(m[0].length) };
 }
 
-// 行内语法：/**/ `code` 图片 链接 加粗 斜体 删除线
+// 行内语法：`code` 图片 链接 加粗 斜体 删除线
 function inline(text, opts) {
   opts = opts || {};
   const codes = [];
@@ -199,32 +207,70 @@ function renderMarkdown(md, opts) {
 
 // ====== 页面模板 ======
 function layout(opts) {
-  const root = opts.depth === 1 ? '../' : '';
-  return [
+  const root = opts.root || '';
+  const head = [
     '<!doctype html>',
     '<html lang="zh-CN">',
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<title>' + escapeHtml(opts.title) + '</title>',
-    '<link rel="stylesheet" href="' + root + 'style.css">',
-    '</head>',
-    '<body>',
-    '<header class="site-header">',
-    '<a class="site-title" href="' + root + 'index.html">' + escapeHtml(SITE.title) + '</a>',
-    '<p class="site-desc">' + escapeHtml(SITE.description) + '</p>',
-    '</header>',
-    '<main>',
-    opts.body,
-    '</main>',
-    '<footer class="site-footer">' + escapeHtml(SITE.footer) + '</footer>',
-    '</body>',
-    '</html>',
-    '',
-  ].join('\n');
+  ];
+  if (opts.description) {
+    head.push('<meta name="description" content="' + escapeHtml(opts.description) + '">');
+  }
+  head.push('<meta name="author" content="' + escapeHtml(SITE.author) + '">');
+  head.push('<link rel="canonical" href="' + escapeHtml(absUrl(opts.path || 'index.html')) + '">');
+  head.push('<meta property="og:site_name" content="' + escapeHtml(SITE.title) + '">');
+  head.push('<meta property="og:title" content="' + escapeHtml(opts.title) + '">');
+  if (opts.description) {
+    head.push('<meta property="og:description" content="' + escapeHtml(opts.description) + '">');
+  }
+  head.push('<meta property="og:type" content="' + (opts.ogType || 'website') + '">');
+  head.push('<meta property="og:url" content="' + escapeHtml(absUrl(opts.path || 'index.html')) + '">');
+  head.push('<meta name="twitter:card" content="summary">');
+  head.push('<link rel="alternate" type="application/rss+xml" title="' + escapeHtml(SITE.title) + ' RSS" href="' + root + 'feed.xml">');
+  head.push('<link rel="stylesheet" href="' + root + 'style.css">');
+  head.push('</head>');
+
+  return head
+    .concat([
+      '<body>',
+      '<header class="site-header">',
+      '<div class="site-head-row">',
+      '<a class="site-title" href="' + root + 'index.html">' + escapeHtml(SITE.title) + '</a>',
+      '<nav class="site-nav">',
+      '<a href="' + root + 'index.html">首页</a>',
+      '<a href="' + root + 'about.html">关于</a>',
+      '<a href="' + root + 'feed.xml">RSS</a>',
+      '</nav>',
+      '</div>',
+      '<p class="site-desc">' + escapeHtml(SITE.description) + '</p>',
+      '</header>',
+      '<main>',
+      opts.body,
+      '</main>',
+      '<footer class="site-footer">' + escapeHtml(SITE.footer) + '</footer>',
+      '</body>',
+      '</html>',
+      '',
+    ])
+    .join('\n');
 }
 
 // ====== 数据 ======
+function normalizeTags(data) {
+  let tags = data.tags !== undefined ? data.tags : data.tag;
+  if (tags === undefined) tags = [];
+  if (!Array.isArray(tags)) {
+    tags = String(tags)
+      .split(',')
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+  return tags;
+}
+
 function readPosts() {
   if (!fs.existsSync(POSTS_DIR)) return [];
   const posts = [];
@@ -235,20 +281,12 @@ function readPosts() {
     const data = parsed.data;
     if (String(data.draft).toLowerCase() === 'true') continue;
 
-    let tags = data.tags !== undefined ? data.tags : data.tag;
-    if (tags === undefined) tags = [];
-    if (!Array.isArray(tags)) {
-      tags = String(tags)
-        .split(',')
-        .map(function (s) { return s.trim(); })
-        .filter(Boolean);
-    }
-
     posts.push({
       slug: file.replace(/\.md$/i, ''),
       title: data.title || file.replace(/\.md$/i, ''),
       date: data.date || '',
-      tags: tags,
+      description: data.description || '',
+      tags: normalizeTags(data),
       body: parsed.body,
     });
   }
@@ -256,6 +294,23 @@ function readPosts() {
     return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
   });
   return posts;
+}
+
+function readPages() {
+  if (!fs.existsSync(PAGES_DIR)) return [];
+  const pages = [];
+  for (const file of fs.readdirSync(PAGES_DIR)) {
+    if (!file.toLowerCase().endsWith('.md')) continue;
+    const raw = fs.readFileSync(path.join(PAGES_DIR, file), 'utf8');
+    const parsed = parseFrontMatter(raw);
+    pages.push({
+      slug: file.replace(/\.md$/i, ''),
+      title: parsed.data.title || file.replace(/\.md$/i, ''),
+      description: parsed.data.description || '',
+      body: parsed.body,
+    });
+  }
+  return pages;
 }
 
 // 摘要：优先 front matter 的 description，否则取第一段正文
@@ -278,65 +333,235 @@ function excerpt(body, max) {
   return plain.length > max ? plain.slice(0, max) + '…' : plain;
 }
 
+function postUrl(post, root) {
+  return root + 'posts/' + encodeURIComponent(post.slug) + '.html';
+}
+
+function tagUrl(tag, root) {
+  return root + 'tags/' + encodeURIComponent(tag) + '.html';
+}
+
+function tagListHtml(tags, root) {
+  return tags
+    .map(function (tag) {
+      return '<a class="tag-link" href="' + tagUrl(tag, root) + '">' + escapeHtml(tag) + '</a>';
+    })
+    .join('');
+}
+
+function renderPostList(posts, root) {
+  return (
+    '<ul class="post-list">' +
+    posts
+      .map(function (post) {
+        const meta = [];
+        if (post.date) {
+          meta.push('<time datetime="' + escapeHtml(post.date) + '">' + escapeHtml(post.date) + '</time>');
+        }
+        if (post.tags.length) meta.push(tagListHtml(post.tags, root));
+        return (
+          '<li>' +
+          '<a class="post-link" href="' + postUrl(post, root) + '">' + escapeHtml(post.title) + '</a>' +
+          (meta.length ? '<p class="post-meta">' + meta.join('<span class="dot">·</span>') + '</p>' : '') +
+          '<p class="excerpt">' + escapeHtml(post.description || excerpt(post.body)) + '</p>' +
+          '</li>'
+        );
+      })
+      .join('\n') +
+    '</ul>'
+  );
+}
+
 // ====== 构建 ======
 function build() {
   const posts = readPosts();
+  const pages = readPages();
+  const tagMap = new Map();
+  for (const post of posts) {
+    for (const tag of post.tags) {
+      if (!tagMap.has(tag)) tagMap.set(tag, []);
+      tagMap.get(tag).push(post);
+    }
+  }
 
   fs.mkdirSync(DIST_DIR, { recursive: true });
   copyDir(ASSETS_DIR, path.join(DIST_DIR, 'assets'));
   const styleSrc = path.join(ASSETS_DIR, 'style.css');
   if (fs.existsSync(styleSrc)) fs.copyFileSync(styleSrc, path.join(DIST_DIR, 'style.css'));
 
-  for (const post of posts) {
+  // 文章页
+  posts.forEach(function (post, i) {
     const body = renderMarkdown(post.body, { depth: 1 });
-    const metaParts = [];
+    const meta = [];
     if (post.date) {
-      metaParts.push('<time datetime="' + escapeHtml(post.date) + '">' + escapeHtml(post.date) + '</time>');
+      meta.push('<time datetime="' + escapeHtml(post.date) + '">' + escapeHtml(post.date) + '</time>');
     }
-    for (const tag of post.tags) metaParts.push('<span class="tag">' + escapeHtml(tag) + '</span>');
-    const meta = metaParts.join('<span class="dot">·</span>');
+    if (post.tags.length) meta.push(tagListHtml(post.tags, '../'));
+
+    const newer = posts[i - 1];
+    const older = posts[i + 1];
+    const nav = [];
+    if (older) {
+      nav.push('<a class="prev" href="' + postUrl(older, '../') + '">← ' + escapeHtml(older.title) + '</a>');
+    }
+    if (newer) {
+      nav.push('<a class="next" href="' + postUrl(newer, '../') + '">' + escapeHtml(newer.title) + ' →</a>');
+    }
 
     const article =
       '<article>' +
       '<header class="post-header">' +
       '<h1>' + escapeHtml(post.title) + '</h1>' +
-      (meta ? '<p class="post-meta">' + meta + '</p>' : '') +
+      (meta.length ? '<p class="post-meta">' + meta.join('<span class="dot">·</span>') + '</p>' : '') +
       '</header>' +
       '<div class="post-body">' + body + '</div>' +
       '</article>' +
+      (nav.length ? '<nav class="post-nav">' + nav.join('') + '</nav>' : '') +
       '<p class="back"><a href="../index.html">← 返回首页</a></p>';
 
     writeFile(
       path.join(DIST_DIR, 'posts', post.slug + '.html'),
-      layout({ title: post.title + ' · ' + SITE.title, body: article, depth: 1 })
-    );
-  }
-
-  const items = posts.map(function (post) {
-    const href = 'posts/' + encodeURIComponent(post.slug) + '.html';
-    const time = post.date
-      ? '<time datetime="' + escapeHtml(post.date) + '">' + escapeHtml(post.date) + '</time>'
-      : '';
-    return (
-      '<li>' +
-      '<a class="post-link" href="' + href + '">' + escapeHtml(post.title) + '</a>' +
-      time +
-      '<p class="excerpt">' + escapeHtml(excerpt(post.body)) + '</p>' +
-      '</li>'
+      layout({
+        title: post.title + ' · ' + SITE.title,
+        description: post.description || excerpt(post.body, 120),
+        path: 'posts/' + post.slug + '.html',
+        body: article,
+        root: '../',
+        ogType: 'article',
+      })
     );
   });
 
+  // 首页
   const indexBody = posts.length
-    ? '<ul class="post-list">' + items.join('\n') + '</ul>'
+    ? renderPostList(posts, '')
     : '<p class="empty">还没有文章。在 posts/ 里新建一个 .md，然后运行 node build.js。</p>';
 
   writeFile(
     path.join(DIST_DIR, 'index.html'),
-    layout({ title: SITE.title, body: indexBody, depth: 0 })
+    layout({ title: SITE.title, description: SITE.description, path: '', body: indexBody, root: '' })
   );
 
-  console.log('生成完成：' + posts.length + ' 篇文章 -> ' + DIST_DIR);
-  console.log('本地预览：双击 dist/index.html，或运行  python -m http.server -d dist 8000');
+  // 标签页
+  for (const [tag, list] of tagMap) {
+    writeFile(
+      path.join(DIST_DIR, 'tags', tag + '.html'),
+      layout({
+        title: '#' + tag + ' · ' + SITE.title,
+        description: '标签「' + tag + '」下的 ' + list.length + ' 篇文章',
+        path: 'tags/' + tag + '.html',
+        body: '<h1 class="page-title">#' + escapeHtml(tag) + '</h1>' + renderPostList(list, '../'),
+        root: '../',
+      })
+    );
+  }
+
+  // 独立页面（about 等）
+  for (const page of pages) {
+    writeFile(
+      path.join(DIST_DIR, page.slug + '.html'),
+      layout({
+        title: (page.slug === 'about' ? page.title : page.title + ' · ' + SITE.title),
+        description: page.description || excerpt(page.body, 120),
+        path: page.slug + '.html',
+        body:
+          '<article class="page"><header class="post-header"><h1>' +
+          escapeHtml(page.title) +
+          '</h1></header><div class="post-body">' +
+          renderMarkdown(page.body, { depth: 0 }) +
+          '</div></article>',
+        root: '',
+      })
+    );
+  }
+
+  // 404
+  writeFile(
+    path.join(DIST_DIR, '404.html'),
+    layout({
+      title: '页面不存在 · ' + SITE.title,
+      path: '404.html',
+      root: '',
+      body:
+        '<div class="notfound"><h1>404</h1><p>这个页面不存在，可能是链接过期了。</p>' +
+        '<p><a href="/index.html">← 回首页</a></p></div>',
+    })
+  );
+
+  // RSS
+  const items = posts
+    .slice(0, 20)
+    .map(function (post) {
+      const url = absUrl('posts/' + encodeURIComponent(post.slug) + '.html');
+      return [
+        '<item>',
+        '<title>' + escapeHtml(post.title) + '</title>',
+        '<link>' + escapeHtml(url) + '</link>',
+        '<guid isPermaLink="true">' + escapeHtml(url) + '</guid>',
+        post.date ? '<pubDate>' + new Date(post.date).toUTCString() + '</pubDate>' : '',
+        '<description>' + escapeHtml(post.description || excerpt(post.body, 200)) + '</description>',
+        '</item>',
+      ]
+        .filter(Boolean)
+        .join('');
+    })
+    .join('\n');
+
+  writeFile(
+    path.join(DIST_DIR, 'feed.xml'),
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<rss version="2.0">',
+      '<channel>',
+      '<title>' + escapeHtml(SITE.title) + '</title>',
+      '<link>' + escapeHtml(absUrl('index.html')) + '</link>',
+      '<description>' + escapeHtml(SITE.description) + '</description>',
+      '<language>zh-CN</language>',
+      posts[0] && posts[0].date ? '<lastBuildDate>' + new Date(posts[0].date).toUTCString() + '</lastBuildDate>' : '',
+      items,
+      '</channel>',
+      '</rss>',
+      '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  );
+
+  // sitemap
+  const urls = [];
+  urls.push({ loc: absUrl('index.html'), lastmod: posts[0] && posts[0].date });
+  for (const post of posts) {
+    urls.push({ loc: absUrl('posts/' + encodeURIComponent(post.slug) + '.html'), lastmod: post.date });
+  }
+  for (const tag of tagMap.keys()) {
+    urls.push({ loc: absUrl('tags/' + encodeURIComponent(tag) + '.html'), lastmod: '' });
+  }
+  for (const page of pages) urls.push({ loc: absUrl(page.slug + '.html'), lastmod: '' });
+  writeFile(
+    path.join(DIST_DIR, 'sitemap.xml'),
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      urls
+        .map(function (u) {
+          return (
+            '<url><loc>' + escapeHtml(u.loc) + '</loc>' + (u.lastmod ? '<lastmod>' + escapeHtml(u.lastmod) + '</lastmod>' : '') + '</url>'
+          );
+        })
+        .join('\n'),
+      '</urlset>',
+      '',
+    ].join('\n')
+  );
+
+  // robots
+  writeFile(
+    path.join(DIST_DIR, 'robots.txt'),
+    'User-agent: *\nAllow: /\n\nSitemap: ' + absUrl('sitemap.xml') + '\n'
+  );
+
+  console.log('生成完成：' + posts.length + ' 篇文章、' + tagMap.size + ' 个标签、' + pages.length + ' 个页面 -> ' + DIST_DIR);
+  console.log('本地预览：python -m http.server -d dist 8000  然后开 http://localhost:8000/');
 }
 
 build();

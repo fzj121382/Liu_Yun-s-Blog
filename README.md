@@ -22,10 +22,15 @@ blog/
 ├── build.js          构建脚本（零依赖）
 ├── posts/            文章，一个 .md 一篇
 │   └── hello-world.md
+├── pages/            固定页面（关于等），一个 .md 一页
+│   └── about.md
 ├── assets/
 │   └── style.css     样式
+├── wrangler.jsonc    Cloudflare Workers 部署配置（dist 作为静态资源目录）
 └── dist/             生成结果，不要手改
 ```
+
+`dist/` 里除了 HTML，还会生成 `feed.xml`（RSS）、`sitemap.xml`、`robots.txt`、`404.html` 和 `tags/` 下各标签页。
 
 ## 文章格式
 
@@ -53,23 +58,25 @@ draft: false
 
 ## 改站点信息
 
-`build.js` 顶部的 `SITE` 对象：标题、描述、页脚。
+`build.js` 顶部的 `SITE` 对象：标题、描述、作者、站点 URL、页脚。换域名时改 `SITE.url`，或构建前设环境变量 `SITE_URL`（影响 canonical、og:url、RSS 与 sitemap 里的绝对地址）。
 
 ## 注意
 
 - 删除文章后，`dist/` 里对应的旧 HTML 不会自动删（构建不清理目录），手动删掉即可
 - `dist/` 是纯静态文件，可以原样放到任何静态托管上，不用改代码
 
-## 部署（外网稳定访问）
+## 部署（外网访问）
 
-`dist/` 是纯静态文件，扔给静态托管即可，本地代码不用改。
+`dist/` 是纯静态文件，写法与托管平台无关。
 
-**免费方案：Cloudflare Pages**
+**当前方案：GitHub + Cloudflare Workers Builds**
 
-1. 把 `blog` 推到 GitHub 仓库
-2. Cloudflare Dashboard → Workers & Pages → Create → Pages → 连接 Git 仓库
-3. 构建命令留空，输出目录填 `dist`（仓库根是 `blog` 的话填 `blog/dist`）
-4. 得到 `xxx.pages.dev`，可以再绑自己的域名
+1. 代码在 `https://github.com/fzj121382/Liu_Yun-s-Blog`（仓库根就是 `blog/`）
+2. Cloudflare Dashboard → Workers & Pages → Create application → Import a repository → 选该仓库
+3. Build command 填 `node build.js`，Deploy command 保持默认 `npx wrangler deploy`，Root directory 留空
+4. 部署后地址：`https://liu-yun-s-blog.fzj121382.workers.dev`
+
+`wrangler.jsonc` 里 `assets.directory` 指向 `./dist`，`not_found_handling: "404-page"` 让不存在的路径返回 `404.html`。之后每次 `git push` 到 `main` 自动重新构建部署；`dist/` 已写进 `.gitignore`，由 Cloudflare 构建时生成。
 
 国内一般能打开，晚高峰速度看线路。
 
