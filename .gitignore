@@ -1,0 +1,12 @@
+# 生成产物：由 node build.js 重新生成，不入库
+dist/
+
+# 拖拽上传用的打包文件
+publish/
+
+# 依赖（当前项目零依赖，留着防止以后误提交）
+node_modules/
+
+# 系统杂项
+.DS_Store
+Thumbs.db
