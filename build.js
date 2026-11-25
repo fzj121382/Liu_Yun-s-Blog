@@ -139,6 +139,39 @@ function renderMarkdown(md, opts) {
       continue;
     }
 
+    // 表格（GFM：| 表头 | ... | + | --- | --- |）
+    if (/^\|/.test(line.trim()) && i + 1 < lines.length) {
+      const isSep = (s) => /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(s.trim());
+      if (isSep(lines[i + 1])) {
+        const splitRow = (row) =>
+          row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+        const header = splitRow(line);
+        const aligns = splitRow(lines[i + 1]).map((c) => {
+          const left = c.startsWith(':');
+          const right = c.endsWith(':');
+          return left && right ? 'center' : right ? 'right' : left ? 'left' : '';
+        });
+        i += 2;
+        const rows = [];
+        while (i < lines.length && /^\|/.test(lines[i].trim())) {
+          rows.push(splitRow(lines[i]));
+          i++;
+        }
+        const cell = (tag, text, idx) => {
+          const a = aligns[idx] ? ' style="text-align:' + aligns[idx] + '"' : '';
+          return '<' + tag + a + '>' + inline(text, opts) + '</' + tag + '>';
+        };
+        out.push(
+          '<div class="table-wrap"><table><thead><tr>' +
+            header.map((t, idx) => cell('th', t, idx)).join('') +
+            '</tr></thead><tbody>' +
+            rows.map((r) => '<tr>' + r.map((t, idx) => cell('td', t, idx)).join('') + '</tr>').join('') +
+            '</tbody></table></div>'
+        );
+        continue;
+      }
+    }
+
     // 标题
     m = line.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
